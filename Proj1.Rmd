@@ -3,13 +3,13 @@ Author CHEN0350
 
 This is my submission on 11 July 2020 for Project 1 of the Coursera course "Reproducible Research".
 
-The data is stored in a csv file with 17,568 observations of the following variables:
+The data is stored in a csv file with the following variables:
 
 1. *Steps*: Number of steps taking in a 5-minute interval (missing values are coded as NA)
 2. *Date*: The date on which the measurement was taken in YYYY-MM-DD format
 3. *Interval*: Identifier for the 5-minute interval in which measurement was taken
 
-We will look at four questions regarding the data:
+We will examine four questions regarding the data:
 
 1. How many steps are taken each day?
 2. What is the average daily activity pattern?
@@ -17,46 +17,176 @@ We will look at four questions regarding the data:
 4. Are there differences in activity patterns between weekdays and weekends?
 
 
-```r
+```{r}
 library(ggplot2)
 library(lubridate)
 library(dplyr)
 ```
 
-## Part 0: Loading and preprocessing the data
+## Loading and pre-processing the data
 
-The key step here is converting the *interval* variable, where the number 1355 should be interpreted as "13:55", to the *Time* variable. Otherwise graphically there would be periodic gaps of size 60 in the data, such as between 13:55 and 14:00.
-
-
-```r
+```{r}
 if(file.exists("activity.csv")) {
-    activity <- read.csv("activity.csv",
+    DF <- read.csv("activity.csv",
                          header = TRUE, stringsAsFactors = FALSE)
 } else if(file.exists("activity.zip")) {
-    activity <- read.csv(unz("activity.zip", "activity.csv"),
+    DF <- read.csv(unz("activity.zip", "activity.csv"),
                          header = TRUE, stringsAsFactors = FALSE)
 } else {
     temp <- tempfile()
     download.file("https://github.com/chen0350/RepData_PeerAssessment1/blob/master/activity.zip",temp)
-    activity <- read.csv(unz(temp, "activity.csv"),
+    DF <- read.csv(unz(temp, "activity.csv"),
                          header = TRUE, stringsAsFactors = FALSE)
     unlink(temp)
 }
 
-activity <- tbl_df(activity)
-activity$date <- ymd(activity$date)
-names(activity) <- c("Steps", "Date", "Interval")
-
-# From ?DateTimeClasses: "POSIXct" is more convenient for including
-# in data frames, and "POSIXlt" is closer to human-readable forms."
-activity$Time <- sprintf("%04d", activity$Interval)
-activity$Time <- strptime(gsub('^(..)(..)$', '\\1:\\2:00', activity$Time), "%H:%M:%S")
-activity$Time <- as.POSIXct(activity$Time)
 ```
 
-## Question 1: How many steps are taken each day?
+## Question A: What is mean total number of steps taken per day?
 
-
-```r
-sum(activity$Steps, na.rm = TRUE) / length(unique(activity$Date))
+1. Calculate the total number of steps taken per day
+2. Histogram of the total number of steps taken each day
+```{r}
+DFsteps <- tapply(DF$steps, DF$date, FUN=sum, na.rm=TRUE)
+library(ggplot2)
+qplot(DFsteps, binwidth=1000, xlab="total number of steps taken each day")
 ```
+
+3. Calculate and report the mean and median of the total number of steps taken per day
+```{r}
+stepsMean <-round(mean(DFsteps))
+stepsMean
+```
+
+```{r}
+stepsmedian <- round(median(DFsteps))
+stepsmedian
+```
+
+## Question B: What is the average daily activity pattern?
+
+1. Make a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+```{r}
+averages <- aggregate(x=list(steps=DF$steps), by=list(interval=DF$interval),FUN=mean, na.rm=TRUE)
+ggplot(data=averages, aes(x=interval, y=steps)) +
+  geom_line() +
+  ggtitle("Time Series: average number of steps") +
+  xlab("5-minute interval") +
+  ylab("average number of steps taken")
+```
+
+
+2. The 5-minute interval that, on average, contains the maximum number of steps
+```{r}
+averages[which.max(averages$steps),]
+```
+The participant usually takes the most steps (206) between 8:35 and 8:40 AM.
+
+## Question C: Inputing missing values
+
+1. Calculate and report the total number of missing values in the dataset 
+```{r}
+DF2 <- DF
+DF2$CI <- "original"
+l <- nrow(DF2)
+length(which(is.na(DF2$steps)))
+```
+
+2 and 3. Strategy for filling in, and Create a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+for (i in 1:l) {
+  if (is.na(DF2[i,1])) {
+    DF2[i,1] <- averages[averages$interval == DF2[i,3],2]
+    DF2[i,4] <- "completed"
+  }
+}
+
+length(which(is.na(DF2$steps)))
+```
+
+```{r}
+length(which(DF2$CI=="completed"))
+```
+
+4. Historgram and Calculate and report the mean and median total number of steps taken per day
+```{r}
+DFsteps2 <- tapply(DF2$steps, DF2$date, FUN=sum, na.rm=TRUE )
+stepsMean2 <- mean(DFsteps2)
+stepsMedian2 <- median(DFsteps2)
+c(stepsMean2,stepsMean)
+```
+
+```{r}
+c(stepsMedian2,stepsmedian)
+```
+
+Mean increased to 10766, increased from 9354 earlier. The median of the distribution also increased from 10395 to 10766.
+
+```{r}
+library(gridExtra)
+require(gridExtra)
+par(mfrow=c(1,2))
+plot1 <- qplot(DFsteps, 
+               binwidth=1000, 
+               ylim=c(0,15),
+               main="original", 
+               xlab="total number of steps taken each day")
+
+plot2 <- qplot(DFsteps2, 
+               binwidth=1000, 
+               ylim=c(0,15),
+               main="completed", 
+               xlab="total number of steps taken each day")
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+## Question D Are there differences in activity patterns between weekdays and weekends?
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+
+DF2[,2] <- as.Date(DF2[,2])
+DF2$WD <- weekdays(DF2[,2])
+DF2$WDG <- "week"               # default = "week"
+
+for (i in 1:l) {
+  if (DF2[i,5] == "Saturday" | DF2[i,5] == "Sunday") {
+    DF2[i,6] <- "weekend"
+  }
+}
+
+DF2[,6] <- as.factor(DF2[,6])
+
+DF2w <-subset(DF2,DF2[,6]=="week")
+DF2we <-subset(DF2,DF2[,6]=="weekend")
+
+averagesW <- aggregate(steps ~ interval, DF2w, FUN=mean)
+averagesWe <- aggregate(steps ~ interval, DF2we, FUN=mean)
+
+plot1 <- ggplot(data=averagesW, aes(x=interval, y=steps)) +
+         geom_line() +
+         ylim(0, 250) +
+          ggtitle("Weekdays") +
+         xlab("5-minute interval") +
+         ylab("average number of steps taken")
+
+plot2 <- ggplot(data=averagesWe, aes(x=interval, y=steps)) +
+         geom_line() +
+         ylim(0, 250) +
+         ggtitle("Weekend Days") +
+         xlab("5-minute interval") +
+         ylab("average number of steps taken")
+
+require(gridExtra)
+
+grid.arrange(plot1, plot2, nrow=2)
+```
+
+**Observations**
+
+* the participant wakes up later on weekend days (around 8 AM) compared with weekdays ( around 6 AM). 
+* the participant tends to take more steps on weekend-days (10856 steps) than on weekdays (8820 steps).
+* on the weekends there is a moderate amount of activity between 8 and 9 PM that is not there on the weekdays.
