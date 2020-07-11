@@ -1,0 +1,62 @@
+# Personal Activity Tracking
+Author CHEN0350
+
+This is my submission on 11 July 2020 for Project 1 of the Coursera course "Reproducible Research".
+
+The data is stored in a csv file with 17,568 observations of the following variables:
+
+1. *Steps*: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+2. *Date*: The date on which the measurement was taken in YYYY-MM-DD format
+3. *Interval*: Identifier for the 5-minute interval in which measurement was taken
+
+We will look at four questions regarding the data:
+
+1. How many steps are taken each day?
+2. What is the average daily activity pattern?
+3. How can we deal with missing values?
+4. Are there differences in activity patterns between weekdays and weekends?
+
+
+```r
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+```
+
+## Part 0: Loading and preprocessing the data
+
+The key step here is converting the *interval* variable, where the number 1355 should be interpreted as "13:55", to the *Time* variable. Otherwise graphically there would be periodic gaps of size 60 in the data, such as between 13:55 and 14:00.
+
+
+```r
+if(file.exists("activity.csv")) {
+    activity <- read.csv("activity.csv",
+                         header = TRUE, stringsAsFactors = FALSE)
+} else if(file.exists("activity.zip")) {
+    activity <- read.csv(unz("activity.zip", "activity.csv"),
+                         header = TRUE, stringsAsFactors = FALSE)
+} else {
+    temp <- tempfile()
+    download.file("https://github.com/chen0350/RepData_PeerAssessment1/blob/master/activity.zip",temp)
+    activity <- read.csv(unz(temp, "activity.csv"),
+                         header = TRUE, stringsAsFactors = FALSE)
+    unlink(temp)
+}
+
+activity <- tbl_df(activity)
+activity$date <- ymd(activity$date)
+names(activity) <- c("Steps", "Date", "Interval")
+
+# From ?DateTimeClasses: "POSIXct" is more convenient for including
+# in data frames, and "POSIXlt" is closer to human-readable forms."
+activity$Time <- sprintf("%04d", activity$Interval)
+activity$Time <- strptime(gsub('^(..)(..)$', '\\1:\\2:00', activity$Time), "%H:%M:%S")
+activity$Time <- as.POSIXct(activity$Time)
+```
+
+## Question 1: How many steps are taken each day?
+
+
+```r
+sum(activity$Steps, na.rm = TRUE) / length(unique(activity$Date))
+```
